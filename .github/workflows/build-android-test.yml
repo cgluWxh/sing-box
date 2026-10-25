@@ -36,6 +36,12 @@ jobs:
         id: ndk
         with:
           ndk-version: r28
+      - name: Ensure local version tag for fork builds
+        run: |
+          if ! git describe --tags >/dev/null 2>&1; then
+            git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+              tag -a v0.0.0-test -m 'CI-only test version fallback'
+          fi
       - name: Test OpenConnect fix
         env:
           CGO_ENABLED: "0"
@@ -92,6 +98,12 @@ jobs:
           pattern: android-test-libbox-*
           path: libbox-inputs
           merge-multiple: true
+      - name: Ensure local version tag for fork builds
+        run: |
+          if ! git describe --tags >/dev/null 2>&1; then
+            git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+              tag -a v0.0.0-test -m 'CI-only test version fallback'
+          fi
       - name: Merge libraries and update version
         run: |
           set -euo pipefail
