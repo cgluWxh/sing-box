@@ -3,11 +3,11 @@
 Run **Actions → Build Android test APK → Run workflow** on the patched branch.
 No local SDK, release signing secrets, or configuration credentials are required.
 
-The workflow builds the current core (including the OpenConnect fix) for all four
-Android ABIs, merges libbox.aar, checks out the pinned clients/android submodule,
+The workflow builds the current core (including the OpenConnect fix) for
+Android arm64 only, prepares libbox.aar, checks out the pinned clients/android submodule,
 and runs `:app:assembleOtherDebug`. Download the final artifact named
 `SFA-android-debug-openconnect-fix`, not the intermediate libbox artifacts.
-Use the arm64-v8a APK for most current phones, or the universal APK.
+Only an arm64-v8a APK is generated; other ABI splits and the universal APK are disabled.
 Minimum supported Android version is 7.0 (API 24).
 
 APKs use Gradle's debug signing configuration and the upstream application ID.
