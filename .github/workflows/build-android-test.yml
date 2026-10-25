@@ -1,0 +1,133 @@
+name: Build Android test APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Serialize signing-key creation on the same ref.
+concurrency:
+  group: android-test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  library:
+    name: Build libbox (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["386", amd64, arm, arm64]
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+      - name: Test OpenConnect fix
+        env:
+          CGO_ENABLED: "0"
+        run: go test -v -ldflags "$(cat release/LDFLAGS)" ./protocol/openconnect
+      - name: Build Android libraries
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          BUILD_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          make lib_install
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          go run ./cmd/internal/build_libbox -target android -platform "android/$BUILD_ARCH"
+          mkdir -p "libbox-output/$BUILD_ARCH"
+          cp libbox.aar "libbox-output/$BUILD_ARCH/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-test-libbox-${{ matrix.arch }}
+          path: libbox-output/
+          compression-level: 0
+          if-no-files-found: error
+
+  apk:
+    name: Assemble debug-signed SFA
+    needs: library
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-depth: 0
+      - name: Checkout pinned Android client
+        run: git submodule update --init --recursive clients/android
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: android-test-libbox-*
+          path: libbox-inputs
+          merge-multiple: true
+      - name: Merge libraries and update version
+        run: |
+          set -euo pipefail
+          mkdir -p clients/android/app/libs
+          go run ./cmd/internal/merge_aar -output clients/android/app/libs/libbox.aar libbox-inputs/*/libbox.aar
+          go run ./cmd/internal/update_android_version --ci --nightly
+      - name: Restore persistent debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sfa-test-debug-keystore-v1
+      - name: Create debug signing key if missing
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname 'CN=Android Debug,O=Android,C=US'
+          fi
+      - name: Build APKs (debug signing, no release secrets)
+        working-directory: clients/android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --build-cache --parallel :app:assembleOtherDebug
+      - name: Prepare APK artifacts
+        run: |
+          set -euo pipefail
+          mkdir -p dist-android
+          cp clients/android/app/build/outputs/apk/other/debug/*.apk dist-android/
+          cp clients/android/version.properties dist-android/
+          git rev-parse HEAD > dist-android/core-commit.txt
+          git -C clients/android rev-parse HEAD > dist-android/app-commit.txt
+          cd dist-android
+          sha256sum *.apk > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SFA-android-debug-openconnect-fix
+          path: dist-android/
+          if-no-files-found: error
