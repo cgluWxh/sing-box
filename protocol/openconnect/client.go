@@ -148,12 +148,26 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          ctx,
 		Options:          options.DialerOptions,
-		RemoteIsDomain:   remoteIsDomain,
+		RemoteIsDomain:   remoteIsDomain && options.Detour == "",
 		ResolverOnDetour: true,
 		NewDialer:        true,
 	})
 	if err != nil {
 		return nil, err
+	}
+	if options.Detour != "" {
+		// Resolve before wrapping the proxy connection, so RemoteAddr identifies
+		// the actual selected gateway IP, including authentication redirects.
+		queryOptions, queryErr := dialer.NewDNSQueryOptions(ctx, options.DomainResolver, true)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		var resolverServer string
+		if options.DomainResolver != nil {
+			resolverServer = options.DomainResolver.Server
+		}
+		outboundDialer = dialer.NewResolveDialer(ctx, &gatewayDialer{Dialer: outboundDialer},
+			false, resolverServer, queryOptions, time.Duration(options.FallbackDelay))
 	}
 	udpTimeout := C.UDPTimeout
 	if options.UDPTimeout != 0 {

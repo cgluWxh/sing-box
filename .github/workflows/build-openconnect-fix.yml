@@ -1,0 +1,43 @@
+name: Build OpenConnect detour fix
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: true
+      - name: Format patched Go sources
+        run: gofmt -w protocol/openconnect/detour.go protocol/openconnect/detour_test.go protocol/openconnect/client.go
+      - name: Test OpenConnect gateway address handling
+        run: go test -v ./protocol/openconnect
+      - name: Build Windows amd64 core
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)
+          REV=$(git rev-parse --short HEAD)
+          go build -trimpath -tags "$TAGS" \
+            -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=custom-openconnect-detour-$REV" \
+            -o dist/sing-box.exe ./cmd/sing-box
+          cp LICENSE dist/
+          cd dist
+          sha256sum sing-box.exe > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-windows-amd64-openconnect-fix
+          path: dist/
+          if-no-files-found: error
