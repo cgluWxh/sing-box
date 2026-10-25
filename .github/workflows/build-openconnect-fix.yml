@@ -21,7 +21,7 @@ jobs:
       - name: Format patched Go sources
         run: gofmt -w protocol/openconnect/detour.go protocol/openconnect/detour_test.go protocol/openconnect/client.go
       - name: Test OpenConnect gateway address handling
-        run: go test -v ./protocol/openconnect
+        run: go test -v -ldflags "$(cat release/LDFLAGS)" ./protocol/openconnect
       - name: Build Windows amd64 core
         env:
           GOOS: windows
@@ -30,8 +30,9 @@ jobs:
           mkdir -p dist
           TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)
           REV=$(git rev-parse --short HEAD)
+          LDFLAGS_SHARED=$(cat release/LDFLAGS)
           go build -trimpath -tags "$TAGS" \
-            -ldflags "-s -w -X github.com/sagernet/sing-box/constant.Version=custom-openconnect-detour-$REV" \
+            -ldflags "$LDFLAGS_SHARED -s -w -X github.com/sagernet/sing-box/constant.Version=custom-openconnect-detour-$REV" \
             -o dist/sing-box.exe ./cmd/sing-box
           cp LICENSE dist/
           cd dist
