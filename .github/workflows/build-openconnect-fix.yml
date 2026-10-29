@@ -41,6 +41,12 @@ jobs:
           cp LICENSE dist/
           cd dist
           sha256sum sing-box.exe > SHA256SUMS
+      - name: Ensure local version tag for fork builds
+        run: |
+          if ! git describe --tags >/dev/null 2>&1; then
+            git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+              tag -a v0.0.0-test -m 'CI-only test version fallback'
+          fi
       - name: Build Windows amd64 Desktop daemon
         run: |
           go run ./cmd/internal/build_boxdd -target windows/amd64 -output dist-daemon/sing-box-daemon.exe
