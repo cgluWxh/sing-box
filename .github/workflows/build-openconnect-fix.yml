@@ -1,3 +1,4 @@
+# yamllint disable rule:line-length
 name: Build OpenConnect detour fix
 
 on:
@@ -41,35 +42,36 @@ jobs:
           cp LICENSE dist/
           cd dist
           sha256sum sing-box.exe > SHA256SUMS
-      - name: Ensure local version tag for fork builds
-        run: |
-          if ! git describe --tags >/dev/null 2>&1; then
-            git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
-              tag -a v0.0.0-test -m 'CI-only test version fallback'
-          fi
-      - name: Build Windows amd64 Desktop daemon
-        run: |
-          go run ./cmd/internal/build_boxdd -target windows/amd64 -output dist-daemon/sing-box-daemon.exe
-          cp LICENSE dist-daemon/
-      - name: Stage daemon Naive runtime
-        run: |
-          set -euo pipefail
-          VERSION=$(cat .github/CRONET_GO_VERSION)
-          RUNTIME_DIR="$RUNNER_TEMP/cronet-go-daemon-runtime"
-          git init "$RUNTIME_DIR"
-          git -C "$RUNTIME_DIR" remote add origin https://github.com/sagernet/cronet-go.git
-          git -C "$RUNTIME_DIR" sparse-checkout set --no-cone '/lib/windows_amd64/libcronet.dll'
-          git -C "$RUNTIME_DIR" fetch --depth=1 --filter=blob:none origin "$VERSION"
-          git -C "$RUNTIME_DIR" checkout FETCH_HEAD
-          cp "$RUNTIME_DIR/lib/windows_amd64/libcronet.dll" dist-daemon/
-          cd dist-daemon
-          sha256sum * > SHA256SUMS
-      - name: Upload Desktop daemon (unsigned)
-        uses: actions/upload-artifact@v4
-        with:
-          name: sing-box-desktop-daemon-windows-amd64-openconnect-fix-unsigned
-          path: dist-daemon/
-          if-no-files-found: error
+      # Desktop daemon build disabled; keep these steps for optional restoration.
+      # - name: Ensure local version tag for fork builds
+      #   run: |
+      #     if ! git describe --tags >/dev/null 2>&1; then
+      #       git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+      #         tag -a v0.0.0-test -m 'CI-only test version fallback'
+      #     fi
+      # - name: Build Windows amd64 Desktop daemon
+      #   run: |
+      #     go run ./cmd/internal/build_boxdd -target windows/amd64 -output dist-daemon/sing-box-daemon.exe
+      #     cp LICENSE dist-daemon/
+      # - name: Stage daemon Naive runtime
+      #   run: |
+      #     set -euo pipefail
+      #     VERSION=$(cat .github/CRONET_GO_VERSION)
+      #     RUNTIME_DIR="$RUNNER_TEMP/cronet-go-daemon-runtime"
+      #     git init "$RUNTIME_DIR"
+      #     git -C "$RUNTIME_DIR" remote add origin https://github.com/sagernet/cronet-go.git
+      #     git -C "$RUNTIME_DIR" sparse-checkout set --no-cone '/lib/windows_amd64/libcronet.dll'
+      #     git -C "$RUNTIME_DIR" fetch --depth=1 --filter=blob:none origin "$VERSION"
+      #     git -C "$RUNTIME_DIR" checkout FETCH_HEAD
+      #     cp "$RUNTIME_DIR/lib/windows_amd64/libcronet.dll" dist-daemon/
+      #     cd dist-daemon
+      #     sha256sum * > SHA256SUMS
+      # - name: Upload Desktop daemon (unsigned)
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: sing-box-desktop-daemon-windows-amd64-openconnect-fix-unsigned
+      #     path: dist-daemon/
+      #     if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: sing-box-windows-amd64-openconnect-fix
