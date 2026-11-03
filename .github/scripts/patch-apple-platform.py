@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 
 ANCHOR = "    public func usePlatformBridge() -> Bool {"
+SIDEBAR_PAGE_CONTENT = "    private func sidebarPageContent(for page: NavigationPage, remoteControlInToolbar: Bool) -> some View {"
+SIDEBAR_PAGE_CONTENT_AVAILABLE = "    @available(iOS 16.0, *)\n" + SIDEBAR_PAGE_CONTENT
 PATCH = '''    // Compatibility with the current core: platform AutoRedirect is Linux-only.
     public func usePlatformAutoRedirect() -> Bool {
         return false
@@ -31,6 +33,14 @@ def patch_source(text: str) -> str:
     return text.replace(ANCHOR, PATCH + ANCHOR)
 
 
+def patch_main_view(text: str) -> str:
+    if SIDEBAR_PAGE_CONTENT_AVAILABLE in text:
+        return text
+    if text.count(SIDEBAR_PAGE_CONTENT) != 1:
+        raise ValueError("Apple MainView changed; expected one sidebarPageContent declaration")
+    return text.replace(SIDEBAR_PAGE_CONTENT, SIDEBAR_PAGE_CONTENT_AVAILABLE)
+
+
 def main():
     root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("clients/apple")
     path = root / "Library/Network/ExtensionPlatformInterface.swift"
@@ -38,7 +48,13 @@ def main():
     result = patch_source(text)
     if result != text:
         path.write_text(result, encoding="utf-8")
-    print("Apple platform interface: AutoRedirect compatibility ready")
+
+    main_view_path = root / "SFI/MainView.swift"
+    text = main_view_path.read_text(encoding="utf-8")
+    result = patch_main_view(text)
+    if result != text:
+        main_view_path.write_text(result, encoding="utf-8")
+    print("Apple platform interface and iOS availability compatibility ready")
 
 
 if __name__ == "__main__":
