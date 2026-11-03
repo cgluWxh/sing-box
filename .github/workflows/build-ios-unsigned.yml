@@ -36,6 +36,8 @@ jobs:
           persist-credentials: false
       - name: Checkout pinned Apple client and its submodules
         run: git submodule update --init --recursive clients/apple
+      - name: Adapt pinned Apple platform interface to current core
+        run: python3 .github/scripts/patch-apple-platform.py
       - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4
         with:
           xcode-version: ${{ inputs.xcode }}
