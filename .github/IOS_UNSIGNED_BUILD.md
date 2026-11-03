@@ -7,8 +7,10 @@ iOS IPA → Run workflow. Select the core branch to build. The Apple client is
 checked out at the commit pinned by `clients/apple`, including its submodules;
 this deliberately does not follow upstream HEAD.
 
-The macOS runner and installed Xcode selection are workflow inputs. Defaults are
-`macos-latest` and `latest`. The pinned upstream build configuration uses an
+The macOS runner, Xcode version, and base bundle ID are workflow inputs. The
+base bundle ID defaults to `com.cgluwxh.singbox`; set it to an explicit ID that
+belongs to your Apple Developer team before building. The build derives the App
+Group ID as `group.<base bundle ID>`. The pinned upstream build configuration uses an
 `xcode-27` runner: GitHub-hosted images may lag behind its Swift/SDK requirements.
 If Swift/SDK APIs are unavailable, use a macOS runner with a compatible Xcode
 and select that installed version. Updating the client independently can also
@@ -42,14 +44,17 @@ No Apple account, certificate or provisioning profile is used by CI. The IPA
 cannot be installed as-is. Re-sign the host app, its frameworks and all embedded
 extensions with compatible bundle identifiers and provisioning profiles.
 
-VPN operation requires the packet-tunnel Network Extension entitlement. App
-Groups must be provisioned consistently for the host and participating
-extensions; Keychain groups and other capabilities must also match the profiles.
-The source entitlement files are references, not ready-to-use provisioning.
-Changing only the host bundle ID or stripping entitlements can result in an app
-that installs but cannot start its VPN. A generic free-account IPA signing
-service is not guaranteed to support these capabilities. Confirm support with
-your signing tool/provider before relying on the artifact.
+VPN operation requires the packet-tunnel Network Extension entitlement. Before
+signing, create the derived App Group in the Apple Developer portal and enable it
+for the host and every embedded extension. For a base ID of `com.example.singbox`,
+register profiles for `com.example.singbox`, plus `.extension`, `.intents`,
+`.fileprovider`, `.widget`, `.share`, and `.action` suffixes. Use the same
+`group.com.example.singbox` entitlement in every matching profile. Keychain groups
+and other capabilities must also match the profiles. The source entitlement files
+are references, not ready-to-use provisioning. Changing only the host bundle ID or
+stripping entitlements can result in an app that installs but cannot start its VPN.
+A generic free-account IPA signing service is not guaranteed to support these
+capabilities. Confirm support with your signing tool/provider before relying on it.
 
 This is a personal test build of GPL-licensed software; preserve upstream notices
 and comply with applicable source-distribution obligations if redistributing.

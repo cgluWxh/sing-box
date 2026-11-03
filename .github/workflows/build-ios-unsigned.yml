@@ -11,6 +11,10 @@ on:
         description: Installed Xcode version to select
         type: string
         default: latest
+      base_bundle_identifier:
+        description: Base bundle ID registered to your Apple Developer team
+        type: string
+        default: com.cgluwxh.singbox
 
 permissions:
   contents: read
@@ -93,7 +97,21 @@ jobs:
           path.write_text(text)
           print(f'Normalized {count} framework references')
           PY
+      - name: Validate iOS identifiers
+        env:
+          BASE_BUNDLE_IDENTIFIER: ${{ inputs.base_bundle_identifier }}
+        run: |
+          set -euo pipefail
+          bundle_id_pattern='^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$'
+          if [[ ! "$BASE_BUNDLE_IDENTIFIER" =~ $bundle_id_pattern ]]; then
+            echo "Invalid base bundle identifier: $BASE_BUNDLE_IDENTIFIER" >&2
+            exit 1
+          fi
+          echo "Base bundle ID: $BASE_BUNDLE_IDENTIFIER"
+          echo "App Group ID: group.$BASE_BUNDLE_IDENTIFIER"
       - name: Archive unsigned SFI
+        env:
+          BASE_BUNDLE_IDENTIFIER: ${{ inputs.base_bundle_identifier }}
         run: |
           set -euo pipefail
           xcodebuild archive \
@@ -105,6 +123,8 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/SFI-build.xcresult" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
+            BASE_PACKAGE_IDENTIFIER="$BASE_BUNDLE_IDENTIFIER" \
+            APP_GROUP_IDENTIFIER="group.$BASE_BUNDLE_IDENTIFIER" \
             2>&1 | tee dist-ios/xcodebuild.log
       - name: Package unsigned IPA and signing reference
         run: |
