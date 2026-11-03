@@ -1,0 +1,51 @@
+# Unsigned iOS test build
+
+## Run
+
+Push the workflow and this file to your fork, then open Actions → Build unsigned
+iOS IPA → Run workflow. Select the core branch to build. The Apple client is
+checked out at the commit pinned by `clients/apple`, including its submodules;
+this deliberately does not follow upstream HEAD.
+
+The macOS runner and installed Xcode selection are workflow inputs. Defaults are
+`macos-latest` and `latest`. The pinned upstream build configuration uses an
+`xcode-27` runner: GitHub-hosted images may lag behind its Swift/SDK requirements.
+If Swift/SDK APIs are unavailable, use a macOS runner with a compatible Xcode
+and select that installed version. Updating the client independently can also
+introduce libbox interface mismatches; do not blindly switch to its latest branch.
+
+The build uses this fork's Go version, gomobile tools, iOS CPU feature patch,
+OpenConnect recovery patch, and existing Apple feature tags (including
+OpenConnect and `with_low_memory`). Only iPhone/iPad arm64 is built, not Simulator.
+The current core is compiled into Libbox.xcframework, then linked into SFI.
+No configuration files or VPN credentials are included in the application.
+
+## Download
+
+Artifact `SFI-ios-arm64-unsigned` contains:
+
+- `SFI-ios-arm64-unsigned.ipa`, a Payload ZIP, not App Store exported or signed.
+- SHA256SUMS and core/client commits in build-info.txt.
+- Build logs and source entitlement files as a signing reference.
+
+On failure the artifact contains the available logs, not a usable IPA. A separate
+Xcode result bundle is uploaded if one was produced. A successful CI build is
+not proof of successful installation or VPN operation on a physical device.
+
+## Signing
+
+No Apple account, certificate or provisioning profile is used by CI. The IPA
+cannot be installed as-is. Re-sign the host app, its frameworks and all embedded
+extensions with compatible bundle identifiers and provisioning profiles.
+
+VPN operation requires the packet-tunnel Network Extension entitlement. App
+Groups must be provisioned consistently for the host and participating
+extensions; Keychain groups and other capabilities must also match the profiles.
+The source entitlement files are references, not ready-to-use provisioning.
+Changing only the host bundle ID or stripping entitlements can result in an app
+that installs but cannot start its VPN. A generic free-account IPA signing
+service is not guaranteed to support these capabilities. Confirm support with
+your signing tool/provider before relying on the artifact.
+
+This is a personal test build of GPL-licensed software; preserve upstream notices
+and comply with applicable source-distribution obligations if redistributing.

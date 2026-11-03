@@ -1,0 +1,139 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner (upstream uses Xcode 27)
+        type: string
+        default: macos-latest
+      xcode:
+        description: Installed Xcode version to select
+        type: string
+        default: latest
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-unsigned-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    name: Build SFI (iPhone arm64, unsigned)
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout pinned Apple client and its submodules
+        run: git submodule update --init --recursive clients/apple
+      - uses: maxim-lobanov/setup-xcode@1242409711ff5721add51979e9e11e23ebb7e5a4
+        with:
+          xcode-version: ${{ inputs.xcode }}
+      - name: Record build environment
+        run: |
+          mkdir -p dist-ios
+          {
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version
+            sw_vers
+            echo "Core: $(git rev-parse HEAD)"
+            echo "Apple client: $(git -C clients/apple rev-parse HEAD)"
+          } | tee dist-ios/build-info.txt
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: 1.26.10
+          cache: true
+      - name: Ensure version tag
+        run: |
+          if ! git describe --tags >/dev/null 2>&1; then
+            git -c user.name=github-actions \
+              -c user.email=github-actions@users.noreply.github.com \
+              tag -a v0.0.0-test -m 'CI-only test version fallback'
+          fi
+      - name: Apply existing OpenConnect recovery and iOS Go patches
+        run: |
+          python3 .github/scripts/patch-openconnect-idle-timeout.py
+          bash .github/patch_go_for_ios.sh
+      - name: Build current core for iOS devices
+        run: |
+          set -euo pipefail
+          make lib_install
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          go run ./cmd/internal/build_libbox -target apple -platform ios/arm64 \
+            2>&1 | tee dist-ios/libbox-build.log
+          test -d Libbox.xcframework
+          mv Libbox.xcframework clients/apple/Libbox.xcframework
+      - name: Normalize SDK framework references
+        run: |
+          # Upstream has absolute references to specific installed SDK versions.
+          # Resolve them against the selected SDK instead; no Swift API shims.
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('clients/apple/sing-box.xcodeproj/project.pbxproj')
+          text = path.read_text()
+          text, count = re.subn(
+              r'path = Platforms/(?:iPhoneOS|AppleTVOS)\.platform/'
+              r'Developer/SDKs/[^/]+\.sdk/'
+              r'(System/Library/Frameworks/[^;]+); '
+              r'sourceTree = DEVELOPER_DIR;',
+              r'path = \1; sourceTree = SDKROOT;', text)
+          path.write_text(text)
+          print(f'Normalized {count} framework references')
+          PY
+      - name: Archive unsigned SFI
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project clients/apple/sing-box.xcodeproj \
+            -scheme SFI -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/SFI.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/SFI-derived" \
+            -resultBundlePath "$RUNNER_TEMP/SFI-build.xcresult" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= DEVELOPMENT_TEAM= \
+            2>&1 | tee dist-ios/xcodebuild.log
+      - name: Package unsigned IPA and signing reference
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/SFI.xcarchive/Products/Applications/sing-box.app"
+          test -d "$APP"
+          # Check the VPN extension is embedded, not just the host application.
+          find "$APP/PlugIns" -name '*.appex' -print \
+            | tee dist-ios/embedded-extensions.txt
+          test -n "$(find "$APP/PlugIns" -name '*.appex' -print -quit)"
+          mkdir -p "$RUNNER_TEMP/SFI-package/Payload"
+          ditto "$APP" "$RUNNER_TEMP/SFI-package/Payload/sing-box.app"
+          IPA="$GITHUB_WORKSPACE/dist-ios/SFI-ios-arm64-unsigned.ipa"
+          (cd "$RUNNER_TEMP/SFI-package" && /usr/bin/zip -qry "$IPA" Payload)
+          mkdir -p dist-ios/signing-reference
+          find clients/apple -name '*.entitlements' \
+            -exec cp {} dist-ios/signing-reference/ \;
+          cp .github/IOS_UNSIGNED_BUILD.md dist-ios/README.md
+          (cd dist-ios && shasum -a 256 *.ipa > SHA256SUMS)
+      - name: Upload IPA and diagnostics (also on failure)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: SFI-ios-arm64-unsigned
+          path: dist-ios/
+          if-no-files-found: warn
+          compression-level: 0
+      - name: Upload Xcode result bundle
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: SFI-ios-xcode-result
+          path: ${{ runner.temp }}/SFI-build.xcresult
+          if-no-files-found: ignore
