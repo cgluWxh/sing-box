@@ -18,7 +18,9 @@ The build uses this fork's Go version, gomobile tools, iOS CPU feature patch,
 OpenConnect recovery patch, and existing Apple feature tags (including
 OpenConnect and `with_low_memory`). Only iPhone/iPad arm64 is built, not Simulator.
 The current core is compiled into Libbox.xcframework, then linked into SFI.
-No configuration files or VPN credentials are included in the application.
+For this unsigned SFI build, native crash reporting is disabled because its SIGTRAP
+handler conflicts with the embedded Go runtime during launch. No configuration files
+or VPN credentials are included in the application.
 
 ## Download
 
@@ -26,6 +28,8 @@ Artifact `SFI-ios-arm64-unsigned` contains:
 
 - `SFI-ios-arm64-unsigned.ipa`, a Payload ZIP, not App Store exported or signed.
 - SHA256SUMS and core/client commits in build-info.txt.
+- Matching archive dSYMs in `dSYMs/`, packaged as ZIPs for Windows users to retain
+  alongside device `.ips` crash reports.
 - Build logs and source entitlement files as a signing reference.
 
 On failure the artifact contains the available logs, not a usable IPA. A separate

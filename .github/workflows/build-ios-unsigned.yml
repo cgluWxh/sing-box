@@ -119,6 +119,16 @@ jobs:
           ditto "$APP" "$RUNNER_TEMP/SFI-package/Payload/sing-box.app"
           IPA="$GITHUB_WORKSPACE/dist-ios/SFI-ios-arm64-unsigned.ipa"
           (cd "$RUNNER_TEMP/SFI-package" && /usr/bin/zip -qry "$IPA" Payload)
+          # Preserve matching dSYMs so device IPS reports can be symbolicated
+          # without a local macOS/Xcode installation.
+          DSYM_ROOT="$RUNNER_TEMP/SFI.xcarchive/dSYMs"
+          test -d "$DSYM_ROOT"
+          mkdir -p dist-ios/dSYMs
+          while IFS= read -r -d '' dsym; do
+            /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$dsym" \
+              "dist-ios/dSYMs/$(basename "$dsym").zip"
+          done < <(find "$DSYM_ROOT" -type d -name '*.dSYM' -prune -print0)
+          test -n "$(find dist-ios/dSYMs -name '*.zip' -print -quit)"
           mkdir -p dist-ios/signing-reference
           find clients/apple -name '*.entitlements' \
             -exec cp {} dist-ios/signing-reference/ \;
